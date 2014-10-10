@@ -1,6 +1,6 @@
 /*
   Copyright 2012 Xion Inc
-  				xion.inc@gmail.com
+                xion.inc@gmail.com
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 package main
 
 import "fmt"
-import zmq "github.com/bububa/gozmq"
+import zmq "github.com/bububa/zmq4"
 
 /**
  * Change PULLSOCKET and PUBSOCKET if you want to start the Broker to
@@ -30,34 +30,46 @@ const (
 )
 
 func main() {
-	context, _ := zmq.NewContext()
+	context, err := zmq.NewContext()
+	if err != nil {
+		return
+	}
+	defer context.Term()
 	/**
-	* Open a PULL socket. It will receive messages from Producers
+	 * Open a PULL socket. It will receive messages from Producers
 	 */
-	pull_socket, _ := context.NewSocket(zmq.PULL)
+	pull_socket, err := context.NewSocket(zmq.PULL)
+	if err != nil {
+		return
+	}
+	defer pull_socket.Close()
 	pull_socket.Bind("tcp://*:" + PULLSOCKET)
 	/**
-	* Open a PUB socket so that Consumers can subscribe to messages
+	 * Open a PUB socket so that Consumers can subscribe to messages
 	 */
-	pub_socket, _ := context.NewSocket(zmq.PUB)
+	pub_socket, err := context.NewSocket(zmq.PUB)
+	if err != nil {
+		return
+	}
+	defer pub_socket.Close()
 	pub_socket.Bind("tcp://*:" + PUBSOCKET)
 
 	/**
-	* Keep receiving messages and send them to all the subscribed Consumers
+	 * Keep receiving messages and send them to all the subscribed Consumers
 	 */
 	for {
-		msg, error := pull_socket.Recv(0)
-		if error == nil {
+		msg, err := pull_socket.Recv(0)
+		if err == nil {
 			fmt.Printf("Received msg %s\n", string(msg))
 		} else if DEBUG {
-			fmt.Println("Error" + error.Error())
+			fmt.Println("Error" + err.Error())
 		}
 
-		error = pub_socket.Send([]byte(msg), 0)
-		if error == nil {
+		_, err = pub_socket.Send(msg, 0)
+		if err == nil {
 			continue
 		} else if DEBUG {
-			fmt.Println("Error" + error.Error())
+			fmt.Println("Error" + err.Error())
 		}
 	}
 }

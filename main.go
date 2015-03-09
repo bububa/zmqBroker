@@ -17,7 +17,7 @@
 package main
 
 import "fmt"
-import zmq "github.com/bububa/zmq4"
+import zmq "github.com/pebbe/zmq4"
 
 /**
  * Change PULLSOCKET and PUBSOCKET if you want to start the Broker to

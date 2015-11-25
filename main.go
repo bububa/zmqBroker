@@ -16,8 +16,10 @@
 */
 package main
 
-import "fmt"
-import zmq "github.com/pebbe/zmq4"
+import (
+	zmq "github.com/pebbe/zmq4"
+	"log"
+)
 
 /**
  * Change PULLSOCKET and PUBSOCKET if you want to start the Broker to
@@ -32,44 +34,56 @@ const (
 func main() {
 	context, err := zmq.NewContext()
 	if err != nil {
+		log.Fatalln(err)
 		return
 	}
 	defer context.Term()
 	/**
 	 * Open a PULL socket. It will receive messages from Producers
 	 */
-	pull_socket, err := context.NewSocket(zmq.PULL)
+	pullSocket, err := context.NewSocket(zmq.PULL)
 	if err != nil {
+		log.Fatalln(err)
 		return
 	}
-	defer pull_socket.Close()
-	pull_socket.Bind("tcp://*:" + PULLSOCKET)
+	defer pullSocket.Close()
+	err = pullSocket.Bind("tcp://*:" + PULLSOCKET)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
 	/**
 	 * Open a PUB socket so that Consumers can subscribe to messages
 	 */
-	pub_socket, err := context.NewSocket(zmq.PUB)
+	pubSocket, err := context.NewSocket(zmq.PUB)
 	if err != nil {
+		log.Fatalln(err)
 		return
 	}
-	defer pub_socket.Close()
-	pub_socket.Bind("tcp://*:" + PUBSOCKET)
-
+	defer pubSocket.Close()
+	err = pubSocket.Bind("tcp://*:" + PUBSOCKET)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+	log.Println("ZMQ BROKER STARTED")
 	/**
 	 * Keep receiving messages and send them to all the subscribed Consumers
 	 */
 	for {
-		msg, err := pull_socket.Recv(0)
+		msg, err := pullSocket.Recv(0)
 		if err == nil {
-			fmt.Printf("Received msg %s\n", string(msg))
+			log.Printf("Received msg %s\n", string(msg))
 		} else if DEBUG {
-			fmt.Println("Error" + err.Error())
+			log.Printf("Error:%s\n", err.Error())
 		}
 
-		_, err = pub_socket.Send(msg, 0)
+		_, err = pubSocket.Send(msg, 0)
 		if err == nil {
 			continue
 		} else if DEBUG {
-			fmt.Println("Error" + err.Error())
+			log.Printf("Error:%s\n", err.Error())
 		}
 	}
+	log.Println("ZMQ BROKER QUIT")
 }

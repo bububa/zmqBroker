@@ -19,6 +19,10 @@ package main
 import (
 	zmq "github.com/pebbe/zmq4"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 /**
@@ -26,9 +30,10 @@ import (
  * listen on other ports.
  */
 const (
-	PULLSOCKET = "5000"
-	PUBSOCKET  = "6000"
-	DEBUG      = true
+	PULLSOCKET         = "5000"
+	PUBSOCKET          = "6000"
+	HEARTBEAT_INTERVAL = 2
+	DEBUG              = true
 )
 
 func main() {
@@ -67,23 +72,53 @@ func main() {
 		return
 	}
 	log.Println("ZMQ BROKER STARTED")
+	exitChan := make(chan struct{}, 1)
+	readyToQuitChan := make(chan struct{}, 1)
+	// Detect Server Exit
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGSTOP, syscall.SIGTERM)
+		<-ch
+		exitChan <- struct{}{}
+		close(ch)
+	}()
+
+	go func(s *zmq.Socket, exitCh chan struct{}, readyToQuitCh chan struct{}) {
+		pingTicker := time.NewTicker(HEARTBEAT_INTERVAL * time.Second) // 定时Flush
+		for {
+			select {
+			case <-pingTicker.C:
+				s.Send("PING", 0)
+			case <-exitCh:
+				pingTicker.Stop()
+				readyToQuitCh <- struct{}{}
+				return
+			}
+		}
+	}(pubSocket, exitChan, readyToQuitChan)
+
 	/**
 	 * Keep receiving messages and send them to all the subscribed Consumers
 	 */
-	for {
-		msg, err := pullSocket.Recv(0)
-		if err == nil {
-			log.Printf("Received msg %s\n", string(msg))
-		} else if DEBUG {
-			log.Printf("Error:%s\n", err.Error())
-		}
+	go func(pull *zmq.Socket, pub *zmq.Socket) {
+		for {
+			msg, err := pull.Recv(0)
+			if err == nil {
+				log.Printf("Received msg %s\n", msg)
+			} else if DEBUG {
+				log.Printf("Error:%s\n", err.Error())
+				break
+			}
 
-		_, err = pubSocket.Send(msg, 0)
-		if err == nil {
-			continue
-		} else if DEBUG {
-			log.Printf("Error:%s\n", err.Error())
+			_, err = pub.Send(msg, 0)
+			if err == nil {
+				continue
+			} else if DEBUG {
+				log.Printf("Error:%s\n", err.Error())
+				break
+			}
 		}
-	}
+	}(pullSocket, pubSocket)
+	<-readyToQuitChan
 	log.Println("ZMQ BROKER QUIT")
 }
